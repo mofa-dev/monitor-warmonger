@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Global Conflict Monitor - Real-time intelligence dashboard.">
+    <title>HORMUZ PULSE // GLOBAL CONFLICT MONITOR</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        /* CSS INTERNAL */
+        :root {
+            --bg: #0b1a2b; --panel: #102338; --text: #e6edf3;
+            --border: #1d3b5e; --accent-exp: #ff4500; --accent-cla: #ff0000;
+            --accent-ten: #ffd700; --font-mono: 'Courier New', Courier, monospace;
+        }
+        [data-theme="light"] {
+            --bg: #f4f7fb; --panel: #ffffff; --text: #1a1a1a; --border: #d0d7de;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg); color: var(--text);
+            font-family: var(--font-mono); height: 100vh; overflow: hidden;
+            font-size: 12px; top: 0 !important;
+        }
+        .skiptranslate iframe { display: none !important; }
+        #app-grid {
+            display: grid; grid-template-rows: 45px 1fr 20px;
+            grid-template-columns: 1fr 350px; height: 100vh; gap: 2px;
+            background-color: var(--border);
+        }
+        header#top-bar {
+            grid-column: 1 / 3; background-color: var(--panel);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 10px; border-bottom: 1px solid var(--border);
+        }
+        .brand { font-weight: bold; letter-spacing: 1px; }
+        .stats { display: flex; gap: 15px; }
+        .stat-box { padding: 4px 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); }
+        [data-theme="light"] .stat-box { background: rgba(0,0,0,0.05); }
+        .alert-explosion { color: var(--accent-exp); text-shadow: 0 0 5px var(--accent-exp); }
+        .alert-clash { color: var(--accent-cla); text-shadow: 0 0 5px var(--accent-cla); }
+        .alert-tension { color: var(--accent-ten); text-shadow: 0 0 5px var(--accent-ten); }
+        .threat-level { font-weight: bold; color: var(--text); }
+        .controls { display: flex; align-items: center; gap: 10px; }
+        .goog-te-gadget-simple {
+            background-color: var(--panel) !important; border: 1px solid var(--border) !important;
+            padding: 2px 4px !important; border-radius: 0 !important; font-family: var(--font-mono) !important;
+        }
+        .goog-te-gadget-simple span, .goog-te-menu-value span { color: var(--text) !important; }
+        #theme-toggle {
+            background: transparent; color: var(--text); border: 1px solid var(--border);
+            padding: 4px 8px; cursor: pointer; font-family: var(--font-mono); text-transform: uppercase;
+        }
+        #theme-toggle:hover { background: var(--border); }
+        main#map-area { position: relative; background-color: var(--panel); }
+        #map { height: 100%; width: 100%; background: var(--bg); z-index: 1; }
+        .radar-sweep {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none;
+            background: conic-gradient(from 0deg at 50% 50%, transparent 270deg, rgba(0, 255, 0, 0.1) 360deg);
+            animation: radar 4s linear infinite; z-index: 2; opacity: 0.3;
+        }
+        [data-theme="light"] .radar-sweep { display: none; }
+        @keyframes radar { 100% { transform: rotate(360deg); } }
+        #timeline-controls {
+            position: absolute; bottom: 20px; left: 20px; right: 20px; background: var(--panel);
+            padding: 10px; border: 1px solid var(--border); z-index: 1000; display: flex; align-items: center; gap: 10px;
+        }
+        #timeline { flex-grow: 1; accent-color: var(--text); }
+        aside#live-feed {
+            background-color: var(--panel); display: flex; flex-direction: column;
+            border-left: 1px solid var(--border); overflow: hidden;
+        }
+        .feed-header { padding: 8px; background-color: var(--border); font-weight: bold; text-align: center; }
+        #feed-container { overflow-y: auto; flex-grow: 1; padding: 5px; }
+        
+        /* IMAGE STYLING */
+        .feed-item {
+            padding: 8px; margin-bottom: 5px; border: 1px solid var(--border);
+            cursor: pointer; transition: background 0.2s;
+        }
+        .feed-item:hover { background: rgba(255,255,255,0.05); }
+        [data-theme="light"] .feed-item:hover { background: rgba(0,0,0,0.05); }
+        .feed-item.type-explosion { border-left: 4px solid var(--accent-exp); }
+        .feed-item.type-clash { border-left: 4px solid var(--accent-cla); }
+        .feed-item.type-tension { border-left: 4px solid var(--accent-ten); }
+        .feed-time { font-size: 10px; opacity: 0.7; margin-bottom: 4px; }
+        .feed-title { font-size: 11px; line-height: 1.3; font-weight: bold;}
+        .feed-image { width: 100%; height: 90px; object-fit: cover; margin-top: 6px; border: 1px solid var(--border); opacity: 0.8; }
+        .popup-image { width: 100%; max-height: 140px; object-fit: cover; margin-top: 5px; border: 1px solid #ccc; }
+
+        footer#footer {
+            grid-column: 1 / 3; background-color: var(--panel); text-align: center;
+            line-height: 20px; font-size: 10px; opacity: 0.6; border-top: 1px solid var(--border);
+        }
+        .pulse-marker { border-radius: 50%; animation: pulse 1.5s infinite; }
+        .marker-explosion { background: var(--accent-exp); box-shadow: 0 0 10px var(--accent-exp); }
+        .marker-clash { background: var(--accent-cla); box-shadow: 0 0 10px var(--accent-cla); }
+        .marker-tension { background: var(--accent-ten); box-shadow: 0 0 10px var(--accent-ten); }
+        @keyframes pulse { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(2.5); opacity: 0; } }
+        [data-theme="dark"] .leaflet-control-zoom-in,
+        [data-theme="dark"] .leaflet-control-zoom-out {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+        }
+    </style>
+</head>
+<body>
+    <div id="app-grid">
+        <header id="top-bar">
+            <div class="brand">HORMUZ PULSE // GCM</div>
+            <div class="stats">
+                <div class="stat-box">TOTAL: <span id="stat-total">0</span></div>
+                <div class="stat-box alert-explosion">🔥 EXPLOSIONS: <span id="stat-exp">0</span></div>
+                <div class="stat-box alert-clash">🔴 CLASHES: <span id="stat-cla">0</span></div>
+                <div class="stat-box alert-tension">⚠️ TENSIONS: <span id="stat-ten">0</span></div>
+                <div class="stat-box threat-level">THREAT SCORE: <span id="stat-threat">0</span></div>
+            </div>
+            <div class="controls">
+                <div id="google_translate_element"></div>
+                <button id="theme-toggle">TOGGLE THEME</button>
+            </div>
+        </header>
+
+        <main id="map-area">
+            <div id="map"></div>
+            <div class="radar-sweep"></div>
+            <div id="timeline-controls">
+                <label for="timeline">TIMELINE [LAST 24H]</label>
+                <input type="range" id="timeline" min="0" max="24" value="24" step="1">
+            </div>
+        </main>
+
+        <aside id="live-feed">
+            <div class="feed-header" id="feed-status">LIVE INTELLIGENCE FEED</div>
+            <div id="feed-container"></div>
+        </aside>
+
+        <footer id="footer">
+            credit by "mofamoga-dreaming-peace" | Data sourced from GDELT Project & Tactical Sims
+        </footer>
+    </div>
+
+    <script type="text/javascript">
+        function googleTranslateElementInit() {
+            new google.translate.TranslateElement({ 
+                pageLanguage: 'en', 
+                includedLanguages: 'en,es,fr,de,ru,zh-CN,ar,hi,pt,id', 
+                layout: google.translate.TranslateElement.InlineLayout.SIMPLE, 
+                autoDisplay: false 
+            }, 'google_translate_element');
+        }
+    </script>
+    <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+    
+    <script>
+        /* JAVASCRIPT INTERNAL */
+        const themeToggle = document.getElementById('theme-toggle');
+        const root = document.documentElement;
+
+        function initTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const theme = storedTheme || (systemDark ? 'dark' : 'light');
+            root.setAttribute('data-theme', theme);
+        }
+
+        themeToggle.addEventListener('click', () => {
+            const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            root.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+        });
+
+        initTheme();
+
+        const map = L.map('map', { zoomControl: false }).setView([25.0, 45.0], 4);
+        
+        // UPDATE 1: PENGGUNAAN TILESERVER CARTODB UNTUK MENGHINDARI BLOKIR OSM DAN SESUAI TEMA GELAP
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { 
+            attribution: '© OpenStreetMap contributors, © CARTO' 
+        }).addTo(map);
+
+        let eventsData = [];
+        const regions = {
+            'Hormuz': [26.56, 56.25], 'Gulf': [26.0, 51.0], 'Red Sea': [20.0, 38.0],
+            'Ukraine': [48.37, 31.16], 'South China Sea': [12.0, 114.0], 'Yemen': [15.5, 48.5]
+        };
+
+        const keywords = {
+            explosion: { regex: /explosion|blast|strike|missile|drone/i, score: 5, type: 'explosion', icon: '🔥', color: 'ff4500' },
+            clash: { regex: /clash|attack|combat|fire|intercept/i, score: 3, type: 'clash', icon: '🔴', color: 'ff0000' },
+            tension: { regex: /warn|deploy|military|threat|tension/i, score: 1, type: 'tension', icon: '⚠️', color: 'ffd700' }
+        };
+
+        const GDELT_URL = 'https://api.gdeltproject.org/api/v2/events/doc/doc?query=Hormuz%20OR%20Gulf%20Ukraine%20Red%20Sea%20attack%20explosion&format=json';
+
+        async function fetchIntelligence() {
+            try {
+                const res = await fetch(GDELT_URL);
+                if (!res.ok) throw new Error("API terblokir atau limit.");
+                const data = await res.json();
+                if (data && data.articles && data.articles.length > 0) {
+                    document.getElementById('feed-status').innerText = "LIVE INTELLIGENCE FEED (GDELT API)";
+                    processArticles(data.articles);
+                } else {
+                    throw new Error("Data API kosong.");
+                }
+            } catch (e) {
+                console.warn('API Intercepted/Failed. Initiating Tactical Fallback Simulation...', e);
+                document.getElementById('feed-status').innerText = "LIVE INTELLIGENCE FEED (TACTICAL SIM)";
+                generateFallbackData(); 
+            }
+        }
+
+        function generateFallbackData() {
+            const mockEvents = [];
+            const actionVerbs = ['Drone Strike Reported', 'Naval Intercept', 'Artillery Fire', 'Military Deployment', 'Suspicious Vessel Detected', 'Air Defense Activated'];
+            const regionNames = Object.keys(regions);
+            
+            for(let i=0; i<15; i++) {
+                const region = regionNames[Math.floor(Math.random() * regionNames.length)];
+                const action = actionVerbs[Math.floor(Math.random() * actionVerbs.length)];
+                mockEvents.push({
+                    title: `${action} near ${region} sector.`,
+                    seendate: new Date(Date.now() - Math.floor(Math.random() * 86400000)).toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z',
+                    url: '#',
+                    // Data simulasi gambar (placeholder)
+                    socialimage: null 
+                });
+            }
+            processArticles(mockEvents);
+        }
+
+        function processArticles(articles) {
+            const dedupe = new Set();
+            eventsData = [];
+            let stats = { exp: 0, cla: 0, ten: 0, threat: 0 };
+
+            articles.forEach(art => {
+                if (dedupe.has(art.title)) return;
+                dedupe.add(art.title);
+
+                let type = 'tension'; let score = 1; let icon = '⚠️'; let colorCode = 'ffd700';
+                if (keywords.explosion.regex.test(art.title)) { type = keywords.explosion.type; score = keywords.explosion.score; icon = keywords.explosion.icon; colorCode = keywords.explosion.color; stats.exp++; } 
+                else if (keywords.clash.regex.test(art.title)) { type = keywords.clash.type; score = keywords.clash.score; icon = keywords.clash.icon; colorCode = keywords.clash.color; stats.cla++; } 
+                else { stats.ten++; }
+                stats.threat += score;
+
+                let latlon = [25.0 + (Math.random() * 5 - 2.5), 45.0 + (Math.random() * 5 - 2.5)];
+                for (const [region, coords] of Object.entries(regions)) {
+                    if (new RegExp(region, 'i').test(art.title)) {
+                        latlon = [coords[0] + (Math.random() * 4 - 2), coords[1] + (Math.random() * 4 - 2)];
+                        break;
+                    }
+                }
+
+                // UPDATE 2: LOGIKA GAMBAR (Ekstraksi dari API atau Placeholder berdasarkan warna tingkat ancaman)
+                let imageUrl = art.socialimage || `https://placehold.co/400x200/102338/${colorCode}?text=INTEL+IMAGE+UNAVAILABLE`;
+
+                eventsData.push({ title: art.title, time: art.seendate, url: art.url, image: imageUrl, type, score, icon, latlon });
+            });
+            updateUI(stats);
+        }
+
+        function updateUI(stats) {
+            document.getElementById('stat-total').innerText = eventsData.length;
+            document.getElementById('stat-exp').innerText = stats.exp;
+            document.getElementById('stat-cla').innerText = stats.cla;
+            document.getElementById('stat-ten').innerText = stats.ten;
+            
+            const threatEl = document.getElementById('stat-threat');
+            threatEl.innerText = stats.threat;
+            threatEl.style.color = stats.threat > 50 ? 'var(--accent-exp)' : (stats.threat > 20 ? 'var(--accent-cla)' : 'var(--accent-ten)');
+
+            const feedContainer = document.getElementById('feed-container');
+            feedContainer.innerHTML = '';
+            
+            map.eachLayer(layer => { if (layer instanceof L.Marker) map.removeLayer(layer); });
+
+            eventsData.forEach(event => {
+                const el = document.createElement('div');
+                el.className = `feed-item type-${event.type}`;
+                const dateStr = event.time ? event.time.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, '$1-$2-$3 $4:$5:$6 UTC') : 'LIVE';
+                
+                // Menyuntikkan tag gambar pada panel feed
+                el.innerHTML = `
+                    <div class="feed-time" translate="no">${dateStr}</div>
+                    <div class="feed-title">${event.icon} ${event.title}</div>
+                    <img src="${event.image}" class="feed-image" alt="Event visual context" loading="lazy" onerror="this.style.display='none'">
+                `;
+                
+                el.onclick = () => {
+                    map.flyTo(event.latlon, 7, { animate: true, duration: 1 });
+                    if(event.url !== '#') window.open(event.url, '_blank');
+                };
+                feedContainer.appendChild(el);
+
+                const iconHtml = `<div class="pulse-marker marker-${event.type}" style="width:12px;height:12px;"></div>`;
+                const customIcon = L.divIcon({ className: '', html: iconHtml, iconSize: [12, 12] });
+                
+                // Menyuntikkan tag gambar pada map popup
+                let popupContent = `<b>${event.icon} ${event.type.toUpperCase()}</b><br>${event.title}`;
+                popupContent += `<br><img src="${event.image}" class="popup-image" alt="Event Image" onerror="this.style.display='none'">`;
+
+                L.marker(event.latlon, { icon: customIcon }).addTo(map).bindPopup(popupContent);
+            });
+        }
+
+        document.getElementById('timeline').addEventListener('input', (e) => {
+            document.querySelector('label[for="timeline"]').innerText = `TIMELINE [LAST ${e.target.value}H]`;
+        });
+
+        fetchIntelligence();
+        setInterval(fetchIntelligence, 60000);
+    </script>
+</body>
+</html>
